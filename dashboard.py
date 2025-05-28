@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from datetime import datetime
 import numpy as np
 
@@ -31,13 +31,12 @@ def main():
     # Sidebar filters
     st.sidebar.header("Filters")
 
-    # Date range filter
     min_date = pd.to_datetime('2011-01-01')
     max_date = pd.to_datetime('2014-12-31')
     start_date = st.sidebar.date_input("Start Date", min_date, min_value=min_date, max_value=max_date)
     end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
 
-    # Product category filter
+    # Category filter
     try:
         categories = load_data('SELECT DISTINCT "CAT" FROM dashboard_data ORDER BY "CAT"')
         selected_categories = st.sidebar.multiselect(
@@ -49,9 +48,9 @@ def main():
         st.sidebar.error("Could not load categories.")
         selected_categories = []
 
-    # SQL Query
-    sales_query = """
-    SELECT s.*, s."CAT" as category, s."SUBCAT" as subcategory, 
+    # Build query
+    base_query = """
+    SELECT s.*, s."CAT" as category, s."SUBCAT" as subcategory,
            s."MAINTENANCE" as maintenance, s."GEN" as gender
     FROM dashboard_data s
     WHERE s."order_date" BETWEEN :start_date AND :end_date
@@ -60,14 +59,13 @@ def main():
 
     if selected_categories:
         placeholders = ', '.join([f':cat_{i}' for i in range(len(selected_categories))])
-        sales_query += f" AND s.\"CAT\" IN ({placeholders})"
+        base_query += f" AND s.\"CAT\" IN ({placeholders})"
         params.update({f'cat_{i}': cat for i, cat in enumerate(selected_categories)})
 
-    sales_data = load_data(sales_query, params=params)
+    sales_data = load_data(text(base_query), params=params)
 
     # Convert date columns
-    date_columns = ['order_date', 'ship_date', 'due_date']
-    for col in date_columns:
+    for col in ['order_date', 'ship_date', 'due_date']:
         sales_data[col] = pd.to_datetime(sales_data[col])
 
     # KPIs
@@ -75,25 +73,21 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        total_sales = sales_data['sls_sales'].sum()
-        st.metric("Total Sales", f"${total_sales:,.2f}")
+        st.metric("Total Sales", f"${sales_data['sls_sales'].sum():,.2f}")
 
     with col2:
-        avg_order_value = sales_data['sls_sales'].mean()
-        st.metric("Average Order Value", f"${avg_order_value:,.2f}")
+        st.metric("Average Order Value", f"${sales_data['sls_sales'].mean():,.2f}")
 
     with col3:
-        total_orders = sales_data['sls_ord_num'].nunique()
-        st.metric("Total Orders", f"{total_orders:,}")
+        st.metric("Total Orders", f"{sales_data['sls_ord_num'].nunique():,}")
 
     with col4:
-        total_products = sales_data['prd_key'].nunique()
-        st.metric("Unique Products Sold", f"{total_products:,}")
+        st.metric("Unique Products Sold", f"{sales_data['prd_key'].nunique():,}")
 
     # Sales Trend Over Time
     st.subheader("Sales Trend Over Time")
     sales_trend = sales_data.groupby(pd.Grouper(key='order_date', freq='M'))['sls_sales'].sum().reset_index()
-    fig1 = px.line(sales_trend, x='order_date', y='sls_sales', 
+    fig1 = px.line(sales_trend, x='order_date', y='sls_sales',
                    title='Monthly Sales Trend',
                    labels={'order_date': 'Date', 'sls_sales': 'Total Sales ($)'})
     st.plotly_chart(fig1, use_container_width=True)
@@ -103,14 +97,14 @@ def main():
     col1, col2 = st.columns(2)
 
     with col1:
-        category_sales = sales_data.groupby('category')['sls_sales'].sum().reset_index()
-        fig2 = px.pie(category_sales, values='sls_sales', names='category', 
+        cat_sales = sales_data.groupby('category')['sls_sales'].sum().reset_index()
+        fig2 = px.pie(cat_sales, values='sls_sales', names='category',
                       title='Sales Distribution by Category')
         st.plotly_chart(fig2, use_container_width=True)
 
     with col2:
-        subcategory_sales = sales_data.groupby('subcategory')['sls_sales'].sum().reset_index().nlargest(10, 'sls_sales')
-        fig3 = px.bar(subcategory_sales, x='subcategory', y='sls_sales',
+        subcat_sales = sales_data.groupby('subcategory')['sls_sales'].sum().reset_index().nlargest(10, 'sls_sales')
+        fig3 = px.bar(subcat_sales, x='subcategory', y='sls_sales',
                       title='Top 10 Subcategories by Sales',
                       labels={'subcategory': 'Subcategory', 'sls_sales': 'Total Sales ($)'})
         st.plotly_chart(fig3, use_container_width=True)
