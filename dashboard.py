@@ -52,7 +52,7 @@ def main():
     # Build the base query
     sales_query = """
     SELECT s.*, s."CAT" as category, s."SUBCAT" as subcategory, 
-    s."MAINTENANCE" as maintenance, s."cst_gndr" as gender
+       s."MAINTENANCE" as maintenance
     FROM dashboard_data s
     WHERE s."sls_order_dt" BETWEEN :start_date AND :end_date
     """
