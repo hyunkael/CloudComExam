@@ -22,9 +22,9 @@ def get_connection():
     )
 
 @st.cache_data(ttl=3600)
-def load_data(query):
+def load_data(_query, params=None):
     with get_connection().connect() as conn:
-        return pd.read_sql(query, conn)
+        return pd.read_sql(_query, conn, params=params)
 
 def main():
     st.title("📊 Sales Analytics Dashboard")
