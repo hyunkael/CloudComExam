@@ -39,7 +39,7 @@ def main():
     end_date = st.sidebar.date_input("End Date", max_date, min_value=min_date, max_value=max_date)
     
     # Product category filter
-    categories = load_data("SELECT DISTINCT \"CAT\" FROM products ORDER BY \"CAT\"")
+    categories = load_data("SELECT DISTINCT \"CAT\" FROM dashboard_data ORDER BY \"CAT\"")
     selected_categories = st.sidebar.multiselect(
         "Product Categories",
         options=categories['CAT'].tolist(),
