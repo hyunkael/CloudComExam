@@ -51,11 +51,9 @@ def main():
     
     # Build the base query
     sales_query = """
-    SELECT s.*, p."CAT" as category, p."SUBCAT" as subcategory, 
-           p."MAINTENANCE" as maintenance, c."cst_gndr" as gender
-    FROM sales s
-    JOIN products p ON s."prd_key" = p."prd_key"
-    JOIN customers c ON s."CID" = c."CID"
+    SELECT s.*, s."CAT" as category, s."SUBCAT" as subcategory, 
+    s."MAINTENANCE" as maintenance, s."cst_gndr" as gender
+    FROM dashboard_data s
     WHERE s."sls_order_dt" BETWEEN :start_date AND :end_date
     """
     
