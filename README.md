@@ -23,7 +23,7 @@ This is an end-to-end data engineering project that demonstrates the complete da
 - Responsive and user-friendly interface
 
 ## Live Demo
-🔗 [Live Streamlit Dashboard](https://cloud-computing-data-engineering-activity.onrender.com/)
+🔗 [Live Streamlit Dashboard](https://cloudcomexam.onrender.com)
 
 ## 👥 Team Members
 1. Qylle Christian Quino
