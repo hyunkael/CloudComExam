@@ -41,6 +41,3 @@ This is an end-to-end data engineering project that demonstrates the complete da
    ```bash
    streamlit run dashboard.py
    ```
-
-## License
-This project is licensed under the MIT License.
