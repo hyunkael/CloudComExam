@@ -94,22 +94,39 @@ def main():
 
     # Build query for bike data
     base_query = """
-    SELECT s.*, s."CAT" as category, s."SUBCAT" as subcategory,
-           s."MAINTENANCE" as maintenance, s."GEN" as gender
-    FROM dashboard_data s
-    WHERE s."order_date" BETWEEN :start_date AND :end_date
-    AND s."CAT" = 'Bikes'
+    SELECT *
+    FROM dashboard_data
+    WHERE order_date BETWEEN :start_date AND :end_date
+    AND "CAT" = 'Bikes'
     """
     params = {"start_date": start_date, "end_date": end_date}
 
     bike_data = load_data(text(base_query), params=params)
+    
+    # Convert date columns to datetime
+    bike_data['order_date'] = pd.to_datetime(bike_data['order_date'])
+    bike_data['ship_date'] = pd.to_datetime(bike_data['ship_date'])
+    bike_data['due_date'] = pd.to_datetime(bike_data['due_date'])
 
-    # Convert date columns
-    for col in ['order_date', 'ship_date', 'due_date']:
-        bike_data[col] = pd.to_datetime(bike_data[col])
+    # Convert numeric columns
+    bike_data['sls_quantity'] = pd.to_numeric(bike_data['sls_quantity'])
+    bike_data['sls_sales'] = pd.to_numeric(bike_data['sls_sales'])
+    bike_data['sls_price'] = pd.to_numeric(bike_data['sls_price'])
 
-    # Standardize gender values
-    bike_data['gender'] = bike_data['gender'].replace({'M': 'MALE', 'F': 'FEMALE', 'MALES': 'MALE', 'FEMALES': 'FEMALE'})
+    # Create simplified product names by taking the part before the first space
+    bike_data['simplified_prd_nm'] = bike_data['prd_nm'].str.split(' ', n=1, expand=True)[0].str.strip()
+
+    # Extract bike color from product name
+    def extract_color(product_name):
+        parts = product_name.split(' ', 1)
+        if len(parts) > 1:
+            color_size_part = parts[1]
+            color_parts = color_size_part.split('-', 1)
+            if len(color_parts) > 0:
+                return color_parts[0].strip()
+        return 'Unknown' # Default for names without the expected format
+
+    bike_data['bike_color'] = bike_data['prd_nm'].apply(extract_color)
 
     # KPIs
     st.markdown('<a id="key-performance-indicators"></a>', unsafe_allow_html=True)
@@ -128,7 +145,7 @@ def main():
         st.markdown(f"""
             <div class="kpi-box">
                 <div class="metric-label">Average Bike Price</div>
-                <div class="metric-value">${bike_data['sls_sales'].mean():,.2f}</div>
+                <div class="metric-value">${bike_data['sls_price'].mean():,.2f}</div>
             </div>
         """, unsafe_allow_html=True)
     
@@ -148,30 +165,30 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-    # Bike Sales Trend Over Time and Gender-Bike Type Distribution
+    # Sales Analysis
     st.markdown('<a id="sales-analysis"></a>', unsafe_allow_html=True)
     st.subheader("Sales Analysis")
-    col1, col2 = st.columns([1.5, 1])  # Make second column narrower
+    col1, col2 = st.columns([1.5, 1])
 
     with col1:
         # Create combined gender-bike type categories
-        gender_bike_sales = bike_data.groupby(['gender', 'subcategory'])['sls_sales'].sum().reset_index()
-        gender_bike_sales['category'] = gender_bike_sales['gender'] + ' - ' + gender_bike_sales['subcategory']
+        bike_color_sales = bike_data.groupby('bike_color')['sls_sales'].sum().reset_index()
         
-        fig_pie = px.pie(gender_bike_sales, 
-                        values='sls_sales', 
-                        names='category',
-                        title='Sales Distribution by Gender and Bike Type',
-                        color_discrete_sequence=COLORS)
+        fig_pie = px.pie(
+                         data_frame=bike_color_sales,
+                         values='sls_sales',
+                         names='bike_color',
+                         title='Sales Distribution by Bike Color',
+                         color_discrete_sequence=COLORS)
         fig_pie.update_layout(
             title_font_color=TEXT_COLOR,
             font_color=TEXT_COLOR,
-            height=500  # Made the pie chart bigger
+            height=500
         )
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with col2:
-        # Extract year and month, then group by year and month
+        # Monthly sales trend
         sales_trend = bike_data.copy()
         sales_trend['year'] = sales_trend['order_date'].dt.year
         sales_trend['month'] = sales_trend['order_date'].dt.month
@@ -183,7 +200,7 @@ def main():
                       color='year',
                       title='Monthly Bike Sales Trend by Year',
                       labels={'month': 'Month', 'sls_sales': 'Total Sales ($)', 'year': 'Year'},
-                      color_discrete_sequence=['#2c1c0c', '#a85d04', '#e0aa01', '#ecd401'])
+                      color_discrete_sequence=COLORS)
         
         fig1.update_traces(mode='lines+markers', marker=dict(size=6), line=dict(width=3))
         fig1.update_layout(
@@ -204,12 +221,12 @@ def main():
     # Top Selling Bike Models
     st.markdown('<a id="top-selling-bike-models"></a>', unsafe_allow_html=True)
     st.subheader("Top Selling Bike Models")
-    top_models = bike_data.groupby('prd_key')['sls_quantity'].sum().reset_index().nlargest(10, 'sls_quantity')
-    fig6 = px.bar(top_models, x='prd_key', y='sls_quantity',
+    top_models = bike_data.groupby('prd_nm')['sls_quantity'].sum().reset_index().nlargest(10, 'sls_quantity')
+    fig6 = px.bar(top_models, x='prd_nm', y='sls_quantity',
                   title='Top 10 Bike Models by Quantity Sold',
-                  labels={'prd_key': 'Bike Model', 'sls_quantity': 'Quantity Sold'},
-                  color='prd_key',
-                  color_discrete_sequence=['#2c1c0c', '#a85d04', '#e0aa01', '#ecd401'] * 3)  # Repeat colors for all 10 bars
+                  labels={'prd_nm': 'Bike Model', 'sls_quantity': 'Quantity Sold'},
+                  color='prd_nm',
+                  color_discrete_sequence=COLORS * 3)
     fig6.update_layout(
         title_font_color=TEXT_COLOR,
         font_color=TEXT_COLOR,
@@ -218,48 +235,7 @@ def main():
     )
     st.plotly_chart(fig6, use_container_width=True)
 
-    # Bike Categories Analysis
-    st.markdown('<a id="bike-categories-analysis"></a>', unsafe_allow_html=True)
-    st.subheader("Bike Categories Analysis")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        subcat_sales = bike_data.groupby('subcategory')['sls_sales'].sum().reset_index().nlargest(2, 'sls_sales')
-        fig2 = px.bar(subcat_sales, x='subcategory', y='sls_sales',
-                      title='Top 2 Bike Types by Sales',
-                      labels={'subcategory': 'Bike Type', 'sls_sales': 'Total Sales ($)'},
-                      color='subcategory',
-                      color_discrete_sequence=BAR_COLORS)
-        fig2.update_layout(
-            title_font_color=TEXT_COLOR,
-            font_color=TEXT_COLOR,
-            xaxis_title_font_color=TEXT_COLOR,
-            yaxis_title_font_color=TEXT_COLOR
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with col2:
-        # Create a stacked bar chart for maintenance by gender
-        maintenance_gender = bike_data.groupby(['maintenance', 'gender'])['sls_sales'].sum().reset_index()
-        fig3 = px.bar(maintenance_gender, 
-                      y='maintenance', 
-                      x='sls_sales',
-                      color='gender',
-                      orientation='h',
-                      title='Sales by Maintenance Requirement and Gender',
-                      labels={'maintenance': 'Requires Maintenance', 
-                             'sls_sales': 'Total Sales ($)',
-                             'gender': 'Gender'},
-                      color_discrete_sequence=['#2c1c0c', '#a85d04', '#e0aa01', '#ecd401'])
-        fig3.update_layout(
-            title_font_color=TEXT_COLOR,
-            font_color=TEXT_COLOR,
-            xaxis_title_font_color=TEXT_COLOR,
-            yaxis_title_font_color=TEXT_COLOR
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-
-    # Customer Demographics for Bike Sales
+    # Customer Demographics
     st.markdown('<a id="bike-customer-demographics"></a>', unsafe_allow_html=True)
     st.subheader("Bike Customer Demographics")
     col1, col2 = st.columns(2)
@@ -268,7 +244,7 @@ def main():
         gender_dist = bike_data.groupby('gender')['sls_ord_num'].nunique().reset_index()
         fig4 = px.pie(gender_dist, values='sls_ord_num', names='gender',
                       title='Bike Orders by Gender',
-                      color_discrete_sequence=['#2c1c0c', '#a85d04', '#e0aa01', '#ecd401'])
+                      color_discrete_sequence=COLORS)
         fig4.update_layout(
             title_font_color=TEXT_COLOR,
             font_color=TEXT_COLOR
@@ -277,11 +253,11 @@ def main():
 
     with col2:
         # Monthly sales by gender
-        monthly_gender = bike_data.groupby([pd.Grouper(key='order_date', freq='M'), 'gender'])['sls_sales'].sum().reset_index()
+        monthly_gender = bike_data.groupby([pd.Grouper(key='order_date', freq='ME'), 'gender'])['sls_sales'].sum().reset_index()
         fig5 = px.line(monthly_gender, x='order_date', y='sls_sales', color='gender',
                       title='Monthly Bike Sales by Gender',
                       labels={'order_date': 'Date', 'sls_sales': 'Total Sales ($)', 'gender': 'Gender'},
-                      color_discrete_sequence=['#2c1c0c', '#a85d04', '#e0aa01', '#ecd401'])
+                      color_discrete_sequence=COLORS)
         fig5.update_traces(mode='lines+markers', marker=dict(size=6), line=dict(width=3))
         fig5.update_layout(
             title_font_color=TEXT_COLOR,
